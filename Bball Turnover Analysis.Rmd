@@ -1,0 +1,138 @@
+---
+title: "ElyseHelenaFinalAnal"
+author: "Elyse Pender"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(leaps)
+library(corrplot)
+library(mosaic)
+```
+
+
+
+```{r}
+
+bball_data <- read_csv("Basketball 310 Project Data.csv")
+
+# Creating indicator variables by position and season
+
+bball_data <- mutate(bball_data, Center = ifelse(Pos =="C", 1,0))
+
+bball_data <- mutate(bball_data, `Power Forward` = ifelse(Pos =="PF", 1,0))
+
+bball_data <- mutate(bball_data, `Point Guard` = ifelse(Pos =="PG", 1,0))
+
+bball_data <- mutate(bball_data, `Small Forward` = ifelse(Pos =="SF", 1,0))
+
+bball_data <- mutate(bball_data, `Shooting Guard` = ifelse(Pos =="SG", 1,0))
+
+bball_data <- mutate(bball_data, season1 = ifelse(Season =="2020-2021", 1,0))
+
+bball_data <- mutate(bball_data, season2 = ifelse(Season =="2021-2022", 1,0))
+
+bball_data <- mutate(bball_data, season3 = ifelse(Season =="2022-2023", 1,0))
+
+bball_data <- mutate(bball_data, season4 = ifelse(Season =="2023-2024", 1,0))
+
+bball_data <- mutate(bball_data, season5 = ifelse(Season =="2024-2025", 1,0))
+
+bball_data <- bball_data %>% 
+  rename(MP = `MP?`)
+
+bball_data <- bball_data %>% 
+  rename(TWP = `Team Winning Pct`)
+
+
+#best subsets to determine the best reduced model
+df2 <- select(bball_data, TWP, G, GS, `MP`, FG, FGA, `FG%`, `3P`, `3PA`, `3P%`, `2P`, `2P%`, `eFG%`, FT, FTA, `FT%`, ORB, DRB, TRB, AST, STL, BLK, TOV, PF, PTS, Center, `Shooting Guard`, `Small Forward`, `Point Guard`, `Power Forward`, season1, season2, season3, season4, season5)
+
+best.lm <- regsubsets(TOV~., data = df2, 
+                     nvmax = 32, nbest=2,
+                     method = "exhaustive")
+plot(best.lm, scale = "adjr2")
+
+#best subsets on ten variables that seem significant
+dfsmall <- select(bball_data, TWP, FGA, FTA, DRB, AST, PF, PTS, MP, FG, TRB, TOV)
+
+best.lm <- regsubsets(TOV~., data = dfsmall, 
+                     nvmax = 8, nbest=2,
+                     method = "exhaustive")
+plot(best.lm, scale = "adjr2")
+
+
+```
+
+
+```{r}
+#Transformations to our variables
+
+bball_data$sqrtFGA <- sqrt(bball_data$FGA)
+bball_data$logFTA <- log(bball_data$FTA)
+bball_data$logDRB <- log(bball_data$DRB)
+bball_data$logAST <- log(bball_data$AST)
+bball_data$logTOV <- log(bball_data$TOV)
+
+#Adding these transformations removed patterns in our residual plots and increased the R^2 value of our reduced model from 0.811 to 0.823
+
+red_logmodel <- lm(data=bball_data, logTOV ~ sqrtFGA + logFTA + logDRB + logAST + PF)
+bball_data$resid3<-red_logmodel$residuals
+bball_data$fit3<-red_logmodel$fitted.values
+bball_data$order<-1:nrow(bball_data)
+
+# We also tried squaring the reduced model to see if adding any interaction helped the model. However, adding the significant terms only increased our R^2 value by 0.004 so we did not include them in the model. 
+
+summary(red_logmodel)
+
+#Regression plots
+
+ggplot(data=bball_data, aes(x=fit3, y=resid3))+
+  geom_point()
+
+ 
+qqnorm(bball_data$resid3)
+
+ggplot(data=bball_data, aes(x=sqrtFGA, y=resid3))+
+  geom_point()
+
+ggplot(data=bball_data, aes(x=logFTA, y=resid3))+
+  geom_point()
+
+ggplot(data=bball_data, aes(x=logDRB, y=resid3))+
+  geom_point()
+
+ggplot(data=bball_data, aes(x=logAST, y=resid3))+
+  geom_point()
+
+ggplot(data=bball_data, aes(x=PF, y=resid3))+
+  geom_point()
+
+
+
+full_model2 <- lm(data=bball_data, logTOV ~ Age + sqrtFGA + logFTA + logDRB + logAST + PF)
+summary(full_model2)
+
+#ESS test for age
+anova(red_logmodel, full_model2)
+
+bball_data <- mutate(bball_data, resid1 = resid(red_logmodel), resid2 = resid(full_model2))
+
+#residual plots of age for each model
+ggplot(data = bball_data, aes(x = Age, y = resid1)) + geom_point() + 
+  labs(title = "Residual Plot for First (Reduced) Model")
+
+ggplot(data = bball_data, aes(x = Age, y = resid2)) + geom_point() + 
+  labs(title = "Residual Plot for Second (Full) Model")
+
+favstats(bball_data$Age)
+```
+
